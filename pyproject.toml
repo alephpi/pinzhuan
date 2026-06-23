@@ -1,0 +1,18 @@
+[project]
+name = "pinzhuan"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "freetype-py>=2.5.1",
+    "matplotlib>=3.11.0",
+    "pillow>=12.2.0",
+    "scikit-image>=0.26.0",
+    "shapely>=2.1.2",
+]
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+]
