@@ -21,6 +21,10 @@ def pad(arr, target=(1000, 1000)):
     )
     return padded_arr
 
+def find_peaks(hist: np.ndarray):
+    std = hist.std()
+    return np.where(hist > 2*std)[0]
+
 def fill_zeros_interp(arr):
     """
     使用 np.interp 进行插值（最简洁）
@@ -99,21 +103,17 @@ def find_grid_idx(grid_axis: np.ndarray, ref_axis: np.ndarray):
         else:
             j-=1
 
-    print(mapping)
-    print(grid_axis)
     mapping_dict = {x.item(): x.item() for x in ref_axis}  # 初始化映射字典，将 grid_axis 的值映射到自身
 
     # 将被匹配的 b 改为对应的 a
     for i, j in enumerate(mapping):
         mapping_dict[ref_axis[j].item()] = grid_axis[i].item()
 
-    print(mapping_dict)
     grid_idx = np.asarray(list(mapping_dict.values()), dtype=np.int32)
-    print(grid_idx)
     return grid_idx
     # return dp[n, m], mapping, ref_axis[mapping]
 
-def rasterize(glyph, plot: bool = False, plot_save_dir: Path = Path(__file__).parent.parent/"plots"):
+def rasterize(glyph, ref=(9,9), size=(1,1), plot: bool = False, plot_save_dir: Path = Path(__file__).parent.parent/"plots"):
     """ rasterization by heuristics : find the grid by histogram and downsample the glyph to the grid.
     """
     glyph = pad(glyph)
@@ -129,13 +129,25 @@ def rasterize(glyph, plot: bool = False, plot_save_dir: Path = Path(__file__).pa
 
     ys, xs = np.where(skeleton)
 
-    # x histogram
+    # histograms
     hist_x = np.bincount(xs, minlength=skeleton.shape[1])
-    ref_x = np.linspace(0, skeleton.shape[1], 11)[1:-1]
-
-    # y histogram
     hist_y = np.bincount(ys, minlength=skeleton.shape[0])
-    ref_y = np.linspace(0, skeleton.shape[0], 11)[1:-1]
+
+    # find peaks in histogram to determine the grid size
+    n = len(find_peaks(hist_x))
+    m = len(find_peaks(hist_y))
+
+    n0, m0 = ref
+    n0 = max(n0, n)
+    m0 = max(m0, m)
+    n0 = max(n0, m0)
+    m0 = n0
+    print(n, m)
+    print(n0, m0)
+
+    ref_x = np.linspace(0, skeleton.shape[1], n0+2)[1:-1]
+    ref_y = np.linspace(0, skeleton.shape[0], m0+2)[1:-1]
+
     if plot:
         fig, ax = plt.subplots(figsize=(6, 6), dpi=1000)
         ax.imshow(skeleton, cmap="gray")  # 默认 origin='upper'
@@ -181,8 +193,8 @@ def rasterize(glyph, plot: bool = False, plot_save_dir: Path = Path(__file__).pa
     # plt.bar(np.arange(len(hist_anti)), hist_anti)
     # plt.title("y=-x direction")
 
-    grid_x = hist_x.argsort()[-9:]  # 最大的9个索引
-    grid_y = hist_y.argsort()[-9:]  # 最大的9个索引
+    grid_x = hist_x.argsort()[-n:]  # 最大的n个索引
+    grid_y = hist_y.argsort()[-m:]  # 最大的m个索引
 
     grid_x.sort()
     grid_y.sort()
@@ -191,10 +203,9 @@ def rasterize(glyph, plot: bool = False, plot_save_dir: Path = Path(__file__).pa
     x_idx = find_grid_idx(grid_x, ref_x)
     y_idx = find_grid_idx(grid_y, ref_y)
 
-    stroke_size = 1
-    hop_size = 1
-    w_strokes = 9
-    h_strokes = 9
+    stroke_size, hop_size = size
+    w_strokes = n0
+    h_strokes = m0
     W = w_strokes * stroke_size + hop_size * (w_strokes - 1)
     H = h_strokes * stroke_size + hop_size * (h_strokes - 1)
 
