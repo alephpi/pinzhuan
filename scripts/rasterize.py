@@ -45,18 +45,73 @@ def fill_zeros_interp(arr):
 
     return arr
 
-def find_grid_idx(ref_axis, grid_axis):
-    ref_x_to_grid_x = {}
-    grid_x_assigned = set()
-    for ref_axis in ref_axis:
-        closest_grid = grid_axis[np.argmin(np.abs(grid_axis - ref_axis))]
-        if closest_grid not in grid_x_assigned:
-            ref_x_to_grid_x[ref_axis] = closest_grid
-            grid_x_assigned.add(closest_grid)
+# def find_grid_idx(grid_axis, ref_axis):
+#     ref_x_to_grid_x = {}
+#     grid_x_assigned = set()
+#     for ref_axis in ref_axis:
+#         closest_grid = grid_axis[np.argmin(np.abs(grid_axis - ref_axis))]
+#         if closest_grid not in grid_x_assigned:
+#             ref_x_to_grid_x[ref_axis] = closest_grid
+#             grid_x_assigned.add(closest_grid)
+#         else:
+#             ref_x_to_grid_x[ref_axis] = int(ref_axis)
+#     x_idx = np.asarray(list(ref_x_to_grid_x.values()), dtype=np.int32)
+#     return x_idx
+
+def find_grid_idx(grid_axis: np.ndarray, ref_axis: np.ndarray):
+    """
+    使用动态规划算法找到 grid_axis 和 ref_axis 之间的最优匹配，使得总代价最小。
+    代价定义为匹配的元素之间的绝对差值之和。其中 grid_axis 的长度小于等于 ref_axis 的长度。
+    """
+
+    n,m = len(grid_axis), len(ref_axis)
+    if n > m:
+        raise ValueError("len(grid_axis) must not exceed len(ref_axis)")
+
+    # dp[i,j]:
+    # 前 i 个 a，前 j 个 b
+    # i=0..n, j=0..m
+    dp = np.full((n+1, m+1), np.inf)
+
+    # True 表示使用了 b[j-1]
+    take = np.zeros((n+1, m+1), dtype=bool)
+    dp[0, :] = 0
+    for i in range(1, n + 1):
+        for j in range(1, m+1):
+            # 不选 b[j-1]
+            best = dp[i, j-1]
+            # 选 b[j-1]
+            use = dp[i-1, j-1] + abs(grid_axis[i-1] - ref_axis[j-1])
+            if use < best:
+                dp[i, j] = use
+                take[i, j] = True
+            else:
+                dp[i, j] = best
+
+    # ---------- 回溯 ----------
+    mapping = np.empty(n, dtype=int)
+    i,j = n,m
+    while i > 0:
+        if take[i,j]:
+            mapping[i-1] = j-1
+            i-=1
+            j-=1
         else:
-            ref_x_to_grid_x[ref_axis] = int(ref_axis)
-    x_idx = np.asarray(list(ref_x_to_grid_x.values()), dtype=np.int32)
-    return x_idx
+            j-=1
+
+    print(mapping)
+    print(grid_axis)
+    mapping_dict = {x.item(): x.item() for x in ref_axis}  # 初始化映射字典，将 grid_axis 的值映射到自身
+
+    # 将被匹配的 b 改为对应的 a
+    for i, j in enumerate(mapping):
+        mapping_dict[ref_axis[j].item()] = grid_axis[i].item()
+
+    print(mapping_dict)
+    grid_idx = np.asarray(list(mapping_dict.values()), dtype=np.int32)
+    print(grid_idx)
+    return grid_idx
+    # return dp[n, m], mapping, ref_axis[mapping]
 
 def rasterize(glyph, plot: bool = False, plot_save_dir: Path = Path(__file__).parent.parent/"plots"):
     """ rasterization by heuristics : find the grid by histogram and downsample the glyph to the grid.
@@ -129,9 +184,12 @@ def rasterize(glyph, plot: bool = False, plot_save_dir: Path = Path(__file__).pa
     grid_x = hist_x.argsort()[-9:]  # 最大的9个索引
     grid_y = hist_y.argsort()[-9:]  # 最大的9个索引
 
+    grid_x.sort()
+    grid_y.sort()
+
     # find stroke indices
-    x_idx = find_grid_idx(ref_x, grid_x)
-    y_idx = find_grid_idx(ref_y, grid_y)
+    x_idx = find_grid_idx(grid_x, ref_x)
+    y_idx = find_grid_idx(grid_y, ref_y)
 
     stroke_size = 1
     hop_size = 1
@@ -163,7 +221,7 @@ if __name__ == "__main__":
     font_path = "./fonts/字悦九叠印篆.ttf"  # 替换为你的字体路径
     face = freetype.Face(font_path)
     face.set_pixel_sizes(0, face.units_per_EM)
-    char = "爽"
+    char = "渊"
     face.load_char(char, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_NO_HINTING)
 
     bmp = face.glyph.bitmap
