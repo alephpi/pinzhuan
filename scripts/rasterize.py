@@ -1,4 +1,5 @@
-import freetype
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -57,18 +58,19 @@ def find_grid_idx(ref_axis, grid_axis):
     x_idx = np.asarray(list(ref_x_to_grid_x.values()), dtype=np.int32)
     return x_idx
 
-def rasterize(glyph, plot=False):
+def rasterize(glyph, plot: bool = False, plot_save_dir: Path = Path(__file__).parent.parent/"plots"):
     """ rasterization by heuristics : find the grid by histogram and downsample the glyph to the grid.
     """
     glyph = pad(glyph)
     skeleton = skeletonize(glyph)
 
     if plot:
+        plot_save_dir.mkdir(parents=True, exist_ok=True)
         plt.imshow(glyph, cmap="gray")
-        plt.savefig("mask.png", dpi=1000)
+        plt.savefig(plot_save_dir / "mask.png", dpi=1000)
 
         plt.imshow(skeleton, cmap="gray")
-        plt.savefig("skeleton.png", dpi=1000)
+        plt.savefig(plot_save_dir / "skeleton.png", dpi=1000)
 
     ys, xs = np.where(skeleton)
 
@@ -109,7 +111,7 @@ def rasterize(glyph, plot=False):
         ax_right.tick_params(labelleft=False)
 
         # plt.show()
-        plt.savefig("histogram.png", dpi=1000)
+        plt.savefig(plot_save_dir / "histogram.png", dpi=1000)
         plt.close()
 
     # diag = xs - ys
@@ -151,17 +153,20 @@ def rasterize(glyph, plot=False):
     downsampling_grid = glyph[np.meshgrid(y_idx_, x_idx_, indexing="ij")]
     if plot:
         plt.imshow(downsampling_grid, "gray")
-        plt.savefig("downsampling_grid.png", dpi=1000)
+        plt.savefig(plot_save_dir / "downsampling_grid.png", dpi=1000)
+    return downsampling_grid
 
 
 
 if __name__ == "__main__":
+    import freetype
     font_path = "./fonts/字悦九叠印篆.ttf"  # 替换为你的字体路径
     face = freetype.Face(font_path)
     face.set_pixel_sizes(0, face.units_per_EM)
-    face.load_char("好", freetype.FT_LOAD_RENDER | freetype.FT_LOAD_NO_HINTING)
+    char = "爽"
+    face.load_char(char, freetype.FT_LOAD_RENDER | freetype.FT_LOAD_NO_HINTING)
 
     bmp = face.glyph.bitmap
     glyph = np.array(bmp.buffer).reshape(bmp.rows, bmp.width) > 0
 
-    rasterize(glyph, plot=False)
+    rasterize(glyph, plot=True, plot_save_dir=Path(__file__).parent.parent/"plots"/char)

@@ -10,6 +10,7 @@ dependencies = [
     "pillow>=12.2.0",
     "scikit-image>=0.26.0",
     "shapely>=2.1.2",
+    "tqdm>=4.68.4",
 ]
 
 [dependency-groups]
