@@ -69,12 +69,14 @@ def compute_gcd_stage1(edges):
     for dx, dy in edges.values():
         ds.extend([dx, dy])
     ds = np.asarray(ds)
+    ds = np.abs(ds)
     v_s, n_s = np.unique(ds[ds != 0], return_counts=True)
     gcd_candidate = v_s[n_s.argmax()]
     return gcd_candidate, v_s, n_s
 
 def compute_gcd_stage2(gcd_candidate, v_s, n_s, search_range=5):
-    gcds = np.arange(gcd_candidate // 2 - search_range, gcd_candidate // 2 + search_range + 1)
+    gcd_min = max(1, gcd_candidate - search_range)
+    gcds = np.arange(gcd_min, gcd_candidate + search_range + 1)
     loss = np.zeros_like(gcds)
     for i, d in enumerate(gcds):
         loss[i] = np.sum(np.abs(smod(v_s, d)) * n_s)
@@ -82,19 +84,25 @@ def compute_gcd_stage2(gcd_candidate, v_s, n_s, search_range=5):
     return gcd, loss
 
 def calibrate(points, edges, gcd):
+    """
+    将点坐标和边长校准到公度量的整数倍，即以公度值gcd为步长的网格上
+    """
     calibrated_edges = {}
     for pair, edge in edges.items():
         dx, dy = edge
         calibrated_edges[pair] = (sdivide(dx, gcd), sdivide(dy, gcd))
 
-    for pair, edge in edges.items():
-        print(pair, edge, calibrated_edges[pair])
     # coordinate calibration
-    offset = points[0]
-    calibrated_points = [(0, 0)]
+    # calibrate point 0, get the offset
+    x, y = points[0]
+    x_ = sdivide(x, gcd)
+    y_ = sdivide(y, gcd)
+    offset = (x - x_, y - y_)
+    calibrated_points = [(x_, y_)]
     is_start_of_contour = False
     for pair, edge in calibrated_edges.items():
         i, j = pair
+        # if i is the start of a contour, we need to minus the offset first, then calibrate it
         if is_start_of_contour:
             x, y = points[i]
             x_ = sdivide(x - offset[0], gcd)
@@ -117,16 +125,18 @@ def calibrate_font(outline: freetype.Outline, plot=False):
     edges = compute_edges(points, contours)
     gcd_candidate, v_s, n_s = compute_gcd_stage1(edges)
     gcd_candidate = gcd_candidate // 2 # 考虑公度量的一半，因为斜线笔画可能采用其一半
+    print(gcd_candidate)
     gcd, loss = compute_gcd_stage2(gcd_candidate, v_s, n_s)
+    print(gcd)
 
-    # 将点坐标和边长校准到公度量的整数倍，即以公度值gcd为步长的网格上
     calibrated_points = calibrate(points, edges, gcd)
 
-    # 可视化
-    fig, ax = plt.subplots(figsize=(8, 8))
-    draw(points, contours, color="gray", label_points=False, figure=(fig, ax))
-    draw(calibrated_points, contours, label_points=True, figure=(fig, ax))
-    plt.show()
+    if plot:
+        # 可视化
+        fig, ax = plt.subplots(figsize=(8, 8))
+        draw(points, contours, color="gray", label_points=False, figure=(fig, ax))
+        draw(calibrated_points, contours, label_points=True, figure=(fig, ax))
+        plt.show()
 
 def main(font, char, plot):
     face = freetype.Face(font)
