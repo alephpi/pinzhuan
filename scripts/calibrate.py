@@ -1,6 +1,12 @@
+from pathlib import Path
+
+import cv2
 import freetype
 import matplotlib.pyplot as plt
 import numpy as np
+from PIL import Image
+from shapely.geometry import Polygon, box
+from utils import iter_glyph
 
 
 def draw(points, contours, color=None, label_points=False, figure=None):
@@ -123,13 +129,14 @@ def calibrate_font(outline: freetype.Outline, plot=False):
     contours = outline.contours
 
     edges = compute_edges(points, contours)
-    gcd_candidate, v_s, n_s = compute_gcd_stage1(edges)
-    gcd_candidate = gcd_candidate // 2 # 考虑公度量的一半，因为斜线笔画可能采用其一半
-    print(gcd_candidate)
-    gcd, loss = compute_gcd_stage2(gcd_candidate, v_s, n_s)
-    print(gcd)
+    # gcd_candidate, v_s, n_s = compute_gcd_stage1(edges)
+    # gcd_candidate = gcd_candidate // 2 # 考虑公度量的一半，因为斜线笔画可能采用其一半
+    # print(gcd_candidate)
+    # gcd, loss = compute_gcd_stage2(gcd_candidate, v_s, n_s)
+    # print(gcd)
 
-    calibrated_points = calibrate(points, edges, gcd)
+    # check hint.py, we obtain gcd = 18
+    calibrated_points = calibrate(points, edges, 18)
 
     if plot:
         # 可视化
@@ -137,19 +144,139 @@ def calibrate_font(outline: freetype.Outline, plot=False):
         draw(points, contours, color="gray", label_points=False, figure=(fig, ax))
         draw(calibrated_points, contours, label_points=True, figure=(fig, ax))
         plt.show()
+    return calibrated_points, contours
 
-def main(font, char, plot):
+def rasterize(calibrated_points, contours, gcd=18, plot=False):
+    x_min, y_min = np.asarray(calibrated_points).min(axis=0)
+    calibrated_points = calibrated_points - np.array([x_min, y_min])
+    points = np.array([(x//gcd, y//gcd) for x, y in calibrated_points])
+
+    if plot:
+        draw(points, contours, label_points=True)
+    x_max, y_max = points.max(axis=0)
+    width = int(x_max)
+    height = int(y_max)
+
+    if plot:
+        plt.xticks(np.arange(width), rotation=90)
+        plt.yticks(np.arange(height))
+        plt.savefig("outline.png")
+        plt.close()
+
+    polygons = []
+    start = 0
+    for end in contours:
+        polygons.append(points[start:end+1])
+        start = end + 1
+
+    mask = np.zeros((height, width), dtype=np.bool_)
+    for poly in polygons:
+        temp_mask = np.zeros_like(mask, dtype=np.bool_)
+        P = Polygon(poly)
+        for y in range(height):
+            for x in range(width):
+                if P.contains(box(x, y, x+1, y+1)):
+                    temp_mask[y, x] = True
+        # cv2.fillPoly(temp_mask, [poly], 255)
+        mask = cv2.bitwise_xor(mask, temp_mask)
+
+    if plot:
+        fig, ax = plt.subplots(figsize=(8, 8))
+        draw(points, contours, label_points=False, figure=(fig, ax))
+        ax.set_aspect('equal')
+        plt.xticks(np.arange(width),rotation=90)
+        plt.yticks(np.arange(height))
+        plt.imshow(mask, "gray",origin="lower")
+        plt.savefig("mask.png", dpi=300)
+        plt.close()
+    sub_mask = mask[1::2,1::2]
+    # sub_mask = mask[0::2,0::2]
+    if plot:
+        plt.imshow(sub_mask, "gray",origin="lower")
+        plt.savefig("mask_sub.png", dpi=300)
+
+    return mask, sub_mask
+
+def main(font, char, plot, save_format):
     face = freetype.Face(font)
     face.load_char(char, freetype.FT_LOAD_NO_SCALE | freetype.FT_LOAD_NO_HINTING)
-    outline = face.glyph.outline
-    calibrate_font(outline, plot=plot)
+    glyph = face.glyph
+    if glyph is None:
+        return
+    outline = glyph.outline
+    calibrated_points, contours = calibrate_font(outline, plot=plot)
+    mask, sub_mask = rasterize(calibrated_points, contours, gcd=18, plot=plot)
+    # img = Image.fromarray(sub_mask.astype(np.uint8) * 255, mode="L")
+    # img.save(save_path/f"{char}.png")
+    # print(mask.shape)
+    if save_format == "png":
+        plt.imshow(mask, "gray", origin="lower")
+        plt.axis('off')
+        plt.savefig(f"./pngs/{char}.png", dpi=300, bbox_inches='tight', pad_inches=0)
+    elif save_format == "arr":
+        np.save(f"./arrs/{char}.npy", mask)
+
+from tqdm import tqdm
+
+
+def process_glyph(code):
+    """
+    子进程执行单个字符处理
+    """
+    char = chr(code)
+    try:
+        main(args.font, char, args.plot, save_format=args.save_format)
+        return None
+    except Exception as e:
+        print(f"{char}报错: {e}")
+        return char
 
 if __name__ == "__main__":
     import argparse
+
+    from tqdm import tqdm
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--font", type=str, default="./fonts/字悦九叠印篆.ttf", help="Path to the font file")
-    parser.add_argument("--char", type=str, default="爽", help="Character to calibrate")
+    parser.add_argument("--char", type=str, default="", help="Character to calibrate")
     parser.add_argument("--plot", action="store_true", help="Whether to plot the calibration result")
-
+    parser.add_argument("--save_format", type=str, default="arr", help="Format to save the output images (png or arr)")
     args = parser.parse_args()
-    main(args.font, args.char, args.plot)
+    Path("./pngs").mkdir(parents=True, exist_ok=True)
+    Path("./arrs").mkdir(parents=True, exist_ok=True)
+    if args.char:
+        main(args.font, args.char, args.plot, save_format=args.save_format)
+    else:
+        face = freetype.Face(args.font)
+        cjk_glyphs = list(iter_glyph())
+        valid_glyphs = []
+        charcode, glyph_index = face.get_first_char()
+        while glyph_index != 0:
+            valid_glyphs.append(charcode)
+            charcode, glyph_index = face.get_next_char(charcode, glyph_index)
+        valid_glyphs = set(valid_glyphs).intersection(set(cjk_glyphs))
+
+
+        err_chars = []
+        # for code in tqdm(valid_glyphs, total=len(valid_glyphs)):
+        #     char = chr(code)
+        #     try:
+        #         main(args.font, char, args.plot, save_format=args.save_format)
+        #     except Exception as e:
+        #         print(f"{char}报错")
+        #         err_chars.append(char)
+        # print(f"报错的字：{"".join(err_chars)}")
+        # print(f"共{len(err_chars)}个")
+        from multiprocessing import Pool, cpu_count
+        # 进程数可根据机器调整
+        workers = 8
+
+        with Pool(processes=workers) as pool:
+            for ret in tqdm(
+                pool.imap(process_glyph, valid_glyphs),
+                total=len(valid_glyphs)
+            ):
+                if ret is not None:
+                    err_chars.append(ret)
+
+        print(f"报错的字：{''.join(err_chars)}")
+        print(f"共{len(err_chars)}个")

@@ -32,5 +32,5 @@ def load_glyph(face: freetype.Face, char: str):
 def iter_glyph():
     for ranges in CJK_RANGES:
         for code in range(ranges[0], ranges[1]+1):
-            char = chr(code)
-            yield char
+            # char = chr(code)
+            yield code
