@@ -33,7 +33,8 @@ Images: CC BY-NC-SA 4.0\
 
 ## 制作
 
-润心 alephpi 2026
+Pinzhuan: pixify zhuanshu font
+Copyright (C) 2026-PRESENT 润心 alephpi maosicheng98@gmail.com
 
 <p align="center">
       <img src="./seals/润.png" alt="润">
