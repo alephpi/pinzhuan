@@ -9,6 +9,17 @@ from tqdm import tqdm
 from utils import iter_glyph
 
 
+def seal(mask, color = (196,26,26)):
+    mask_uint8 = mask.astype(np.uint8)*255
+    h, w = mask.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+
+    # 前景色（印章红）
+    rgba[:, :, :3] = color * (mask_uint8[..., None] // 255)  # R
+    rgba[:, :, 3] = mask_uint8                         # Alpha (透明度)
+    return rgba
+
+
 def draw(points, contours, color=None, label_points=False, figure=None):
     if figure is None:
         fig, ax = plt.subplots(figsize=(8, 8))
@@ -207,13 +218,15 @@ def main(font, char, plot, save_format):
     calibrated_points, contours = calibrate_font(outline, plot=plot)
     mask, sub_mask = rasterize(calibrated_points, contours, gcd=18, plot=plot)
     if save_format == "png":
-        plt.imshow(mask, "gray", origin="lower")
+        plt.imshow(mask, "Reds", origin="lower")
         plt.axis('off')
-        plt.savefig(f"./pngs/{char}.png", dpi=300, bbox_inches='tight', pad_inches=0)
+        plt.savefig(f"./pngs/{char}.png", bbox_inches='tight', pad_inches=0)
     elif save_format == "arr":
         np.save(f"./arrs/{char}.npy", mask)
-
-
+    elif save_format == "seal":
+        from PIL import Image
+        rgba = np.flipud(seal(mask))
+        Image.fromarray(rgba, "RGBA").save(f"./seals/{char}.png")
 
 def process_glyph(code):
     """
@@ -238,8 +251,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     Path("./pngs").mkdir(parents=True, exist_ok=True)
     Path("./arrs").mkdir(parents=True, exist_ok=True)
+    Path("./seals").mkdir(parents=True, exist_ok=True)
     if args.char:
-        main(args.font, args.char, args.plot, save_format=args.save_format)
+        char = list(args.char)
+        for c in char:
+            main(args.font, c, args.plot, save_format=args.save_format)
     else:
         face = freetype.Face(args.font)
         cjk_glyphs = list(iter_glyph())
