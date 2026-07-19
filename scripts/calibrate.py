@@ -4,8 +4,8 @@ import cv2
 import freetype
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
 from shapely.geometry import Polygon, box
+from tqdm import tqdm
 from utils import iter_glyph
 
 
@@ -206,9 +206,6 @@ def main(font, char, plot, save_format):
     outline = glyph.outline
     calibrated_points, contours = calibrate_font(outline, plot=plot)
     mask, sub_mask = rasterize(calibrated_points, contours, gcd=18, plot=plot)
-    # img = Image.fromarray(sub_mask.astype(np.uint8) * 255, mode="L")
-    # img.save(save_path/f"{char}.png")
-    # print(mask.shape)
     if save_format == "png":
         plt.imshow(mask, "gray", origin="lower")
         plt.axis('off')
@@ -216,7 +213,6 @@ def main(font, char, plot, save_format):
     elif save_format == "arr":
         np.save(f"./arrs/{char}.npy", mask)
 
-from tqdm import tqdm
 
 
 def process_glyph(code):
@@ -234,7 +230,6 @@ def process_glyph(code):
 if __name__ == "__main__":
     import argparse
 
-    from tqdm import tqdm
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--font", type=str, default="./fonts/字悦九叠印篆.ttf", help="Path to the font file")
     parser.add_argument("--char", type=str, default="", help="Character to calibrate")
@@ -257,15 +252,6 @@ if __name__ == "__main__":
 
 
         err_chars = []
-        # for code in tqdm(valid_glyphs, total=len(valid_glyphs)):
-        #     char = chr(code)
-        #     try:
-        #         main(args.font, char, args.plot, save_format=args.save_format)
-        #     except Exception as e:
-        #         print(f"{char}报错")
-        #         err_chars.append(char)
-        # print(f"报错的字：{"".join(err_chars)}")
-        # print(f"共{len(err_chars)}个")
         from multiprocessing import Pool, cpu_count
         # 进程数可根据机器调整
         workers = 8
@@ -279,4 +265,3 @@ if __name__ == "__main__":
                     err_chars.append(ret)
 
         print(f"报错的字：{''.join(err_chars)}")
-        print(f"共{len(err_chars)}个")
